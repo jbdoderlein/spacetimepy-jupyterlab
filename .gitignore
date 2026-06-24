@@ -1,0 +1,11 @@
+.cache/
+.venv/
+.uvenv/
+.uvsysvenv/
+build/
+dist/
+lib/
+node_modules/
+*.egg-info/
+*.log
+*.tsbuildinfo

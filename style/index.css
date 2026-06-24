@@ -1,0 +1,53 @@
+.spx-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 260px;
+  padding: 12px;
+  color: var(--jp-ui-font-color1);
+  background: var(--jp-layout-color1);
+  font-family: var(--jp-ui-font-family);
+}
+
+.spx-panel-header {
+  font-size: var(--jp-ui-font-size2);
+  font-weight: 600;
+}
+
+.spx-button {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 4px;
+  color: var(--jp-ui-font-color1);
+  background: var(--jp-layout-color2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.spx-button:hover {
+  background: var(--jp-layout-color3);
+}
+
+.spx-status {
+  min-height: 72px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--jp-border-color2);
+  border-radius: 4px;
+  overflow: auto;
+  color: var(--jp-ui-font-color2);
+  background: var(--jp-layout-color0);
+  font-family: var(--jp-code-font-family);
+  font-size: var(--jp-code-font-size);
+  white-space: pre-wrap;
+}
+
+.spx-line-highlight {
+  outline: 2px solid var(--jp-brand-color1);
+  background: color-mix(in srgb, var(--jp-brand-color1) 18%, transparent);
+  transition: background 160ms ease-out;
+}
