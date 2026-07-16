@@ -2513,7 +2513,7 @@ wheels = [
 ]
 
 [[package]]
-name = "spacetimpepy-jupyterlab"
+name = "spacetimepy-jupyterlab"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

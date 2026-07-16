@@ -1,13 +1,13 @@
 {
-  "name": "spacetimpepy-jupyterlab",
+  "name": "spacetimepy-jupyterlab",
   "version": "0.1.0",
   "description": "Exploratory notebook controls and side panel for JupyterLab.",
-  "homepage": "https://github.com/example/spacetimpepy-jupyterlab",
+  "homepage": "https://github.com/example/spacetimepy-jupyterlab",
   "bugs": {
-    "url": "https://github.com/example/spacetimpepy-jupyterlab/issues"
+    "url": "https://github.com/example/spacetimepy-jupyterlab/issues"
   },
   "license": "BSD-3-Clause",
-  "author": "spacetimpepy contributors",
+  "author": "spacetimepy contributors",
   "sideEffects": [
     "style/*.css"
   ],
@@ -24,7 +24,7 @@
     "build:lib": "tsc",
     "build:labextension": "XDG_CACHE_HOME=.cache jupyter-builder build .",
     "build:labextension:dev": "XDG_CACHE_HOME=.cache jupyter-builder build --development=True .",
-    "clean": "rimraf lib tsconfig.tsbuildinfo .cache spacetimpepy_jupyterlab/labextension",
+    "clean": "rimraf lib tsconfig.tsbuildinfo .cache spacetimepy_jupyterlab/labextension",
     "generate:kernel-code": "node scripts/generate-kernel-code.mjs",
     "prebuild:lib": "npm run generate:kernel-code",
     "pretest": "npm run generate:kernel-code",
@@ -50,6 +50,6 @@
   },
   "jupyterlab": {
     "extension": true,
-    "outputDir": "spacetimpepy_jupyterlab/labextension"
+    "outputDir": "spacetimepy_jupyterlab/labextension"
   }
 }

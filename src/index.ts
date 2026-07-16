@@ -43,10 +43,10 @@ import type {
 
 import '../style/index.css';
 
-const PLUGIN_ID = 'spacetimpepy-jupyterlab:plugin';
-const OPEN_COMMAND = 'spacetimpepy-jupyterlab:open-panel';
-const CAPTURE_COMMAND = 'spacetimpepy-jupyterlab:capture-selection';
-const METADATA_KEY = 'spacetimpepy:variants';
+const PLUGIN_ID = 'spacetimepy-jupyterlab:plugin';
+const OPEN_COMMAND = 'spacetimepy-jupyterlab:open-panel';
+const CAPTURE_COMMAND = 'spacetimepy-jupyterlab:capture-selection';
+const METADATA_KEY = 'spacetimepy:variants';
 const WORKFLOW_MARKER = 'SpaceTimeWorkflowBuilder';
 
 interface ExplorerPanelOptions {
@@ -60,7 +60,7 @@ interface ExplorerPanelOptions {
 class ExplorerPanel extends Widget {
   constructor(private readonly options: ExplorerPanelOptions) {
     super();
-    this.id = 'spacetimpepy-explorer-panel';
+    this.id = 'spacetimepy-explorer-panel';
     this.title.label = 'Explore';
     this.title.caption = 'Exploratory notebook controls';
     this.addClass('spx-panel');

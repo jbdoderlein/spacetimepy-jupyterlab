@@ -40,7 +40,7 @@ export class SpaceTimeWebView extends Widget {
     ) => CaptureResult
   ) {
     super();
-    this.id = 'spacetimpepy-webview-panel';
+    this.id = 'spacetimepy-webview-panel';
     this.title.label = 'SpaceTime';
     this.title.caption = 'SpaceTime web view';
     this.addClass('spx-webview');

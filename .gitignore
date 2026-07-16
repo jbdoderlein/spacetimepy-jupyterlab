@@ -9,5 +9,5 @@ node_modules/
 *.egg-info/
 *.log
 *.tsbuildinfo
-spacetimpepy_jupyterlab/labextension/*
+spacetimepy_jupyterlab/labextension/*
 src/generated/

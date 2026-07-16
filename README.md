@@ -1,4 +1,4 @@
-# spacetimpepy-jupyterlab
+# spacetimepy-jupyterlab
 
 Minimal JupyterLab 4 extension for exploratory notebook controls.
 
@@ -43,7 +43,7 @@ For a recorded `SpaceTimeWorkflowBuilder` method argument, applying a variant al
 4. invoke the changed method and the remaining outer call chain, including workflow execution
 5. record those calls as a named branch in the SpaceTime trace
 
-Captured targets are stored in the cell metadata under `spacetimpepy:variants`.
+Captured targets are stored in the cell metadata under `spacetimepy:variants`.
 
 The replay prototype currently targets argument expressions on monitored builder methods. A selected range outside a method argument, a non-expression replacement, or a call without a rehydratable recorded `self` checkpoint is reported in the SpaceTime panel.
 
@@ -69,7 +69,7 @@ module automatically; do not edit `src/generated/kernel-sources.ts` directly.
 
 ```bash
 npm run build
-uv sync --no-editable --reinstall-package spacetimpepy-jupyterlab
+uv sync --no-editable --reinstall-package spacetimepy-jupyterlab
 uv run jupyter lab
 ```
 
