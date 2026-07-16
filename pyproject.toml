@@ -25,6 +25,7 @@ Homepage = "https://github.com/example/spacetimpepy-jupyterlab"
 [tool.hatch.build.targets.sdist]
 include = [
   "spacetimpepy_jupyterlab",
+  "scripts",
   "src",
   "style",
   "package.json",

@@ -25,6 +25,9 @@
     "build:labextension": "XDG_CACHE_HOME=.cache jupyter-builder build .",
     "build:labextension:dev": "XDG_CACHE_HOME=.cache jupyter-builder build --development=True .",
     "clean": "rimraf lib tsconfig.tsbuildinfo .cache spacetimpepy_jupyterlab/labextension",
+    "generate:kernel-code": "node scripts/generate-kernel-code.mjs",
+    "prebuild:lib": "npm run generate:kernel-code",
+    "pretest": "npm run generate:kernel-code",
     "test": "vitest run src"
   },
   "dependencies": {

@@ -13,7 +13,6 @@ The current prototype adds:
 - a function-call tree for the latest SpaceTime session, showing only recorded function arguments
 - a workflow feature selector with sample sizes and compact per-stage bin plots
 - checkpoint-based branch replay when an argument variant is applied
-- a kernel probe action for checking notebook/kernel communication
 
 This is intentionally scoped to selected code replacement before adding richer Python argument-specific widgets.
 
@@ -63,6 +62,10 @@ The combination active when the workflow cell executes is stored as the session 
 The feature selector at the top of the SpaceTime panel displays the selected metadata distribution after each workflow step. Numeric metadata uses up to 10 equal-width bins. Categorical metadata uses the 10 most frequent values plus an `Other` bin. Only aggregate counts and sample sizes are sent to the browser.
 
 ## Development loop
+
+Kernel programs are authored as Python templates in `src/kernel/`. The
+`prebuild:lib` and `pretest` scripts generate the ignored TypeScript source
+module automatically; do not edit `src/generated/kernel-sources.ts` directly.
 
 ```bash
 npm run build
