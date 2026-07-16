@@ -158,12 +158,6 @@
   white-space: pre-wrap;
 }
 
-.spx-line-highlight {
-  outline: 2px solid var(--jp-brand-color1);
-  background: color-mix(in srgb, var(--jp-brand-color1) 18%, transparent);
-  transition: background 160ms ease-out;
-}
-
 .spx-inline-target {
   border-bottom: 2px solid var(--jp-brand-color1);
   background: color-mix(in srgb, var(--jp-brand-color1) 10%, transparent);
