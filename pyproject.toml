@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spacetimepy-jupyterlab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Exploratory notebook controls and side panel for JupyterLab."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.13"
 license = { text = "BSD-3-Clause" }
 authors = [{ name = "spacetimepy contributors" }]
 classifiers = [
@@ -17,7 +17,11 @@ classifiers = [
   "Programming Language :: Python",
   "Programming Language :: Python :: 3"
 ]
-dependencies = ["jupyterlab>=4.0.0,<5"]
+dependencies = [
+  "jupyterlab>=4.0.0,<5",
+  "sampling-mining-workflows-dsl>=0.0.2,<0.1",
+  "spacetimepy>=2.0.0,<3"
+]
 
 [project.urls]
 Homepage = "https://github.com/example/spacetimepy-jupyterlab"
@@ -50,3 +54,10 @@ ensured-targets = ["spacetimepy_jupyterlab/labextension/package.json"]
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]
 npm = ["npm"]
 build_cmd = "build:prod"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv.sources]
+spacetimepy = { path = "../SpaceTimePy", editable = true }
+sampling-mining-workflows-dsl = { path = "../SamplingMiningWorkflowDSL", editable = true }

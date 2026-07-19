@@ -3,6 +3,7 @@ import sys
 
 # __SPX_WORKFLOW_SUMMARY__
 
+
 def _spx_value(value):
     try:
         if value is None or isinstance(value, (bool, int, float, str)):
@@ -10,22 +11,51 @@ def _spx_value(value):
         if isinstance(value, (list, tuple)):
             return [_spx_value(item) for item in list(value)[:8]]
         if isinstance(value, dict):
-            return {str(key): _spx_value(val) for key, val in list(value.items())[:8]}
+            return {
+                str(key): _spx_value(val)
+                for key, val in list(value.items())[:8]
+            }
         text = repr(value)
         if len(text) > 160:
             text = text[:157] + "..."
         return {"type": type(value).__name__, "repr": text}
     except Exception as exc:
-        return {"type": type(value).__name__, "repr": f"<unrepresentable: {exc}>"}
+        return {
+            "type": type(value).__name__,
+            "repr": f"<unrepresentable: {exc}>",
+        }
 
-def _spx_argument(manager, name, ref):
-    if name in ("self", "cls"):
-        return None
-    try:
-        value, _ = manager.get(ref)
-        return {"name": name, "value": _spx_value(value)}
-    except Exception as exc:
-        return {"name": name, "value": f"<error reading {ref}: {exc}>"}
+
+def _spx_call_for_step(space, step):
+    if step.function_call is not None:
+        return step.function_call, step.function_call.entry_local_references
+    if step.stack_snapshot is not None:
+        snapshot = step.stack_snapshot
+        return (
+            space.data.get_function_call(snapshot.function_call_id),
+            snapshot.local_references,
+        )
+    return None, {}
+
+
+def _spx_arguments(references, loaded_values):
+    arguments = []
+    for name, reference in references.items():
+        if name in ("self", "cls"):
+            continue
+        try:
+            arguments.append(
+                {"name": name, "value": _spx_value(loaded_values[reference])}
+            )
+        except Exception as exc:
+            arguments.append(
+                {
+                    "name": name,
+                    "value": f"<error reading {reference}: {exc}>",
+                }
+            )
+    return arguments
+
 
 payload = {
     "loaded": "spacetimepy" in sys.modules,
@@ -35,107 +65,86 @@ payload = {
 }
 try:
     if payload["loaded"]:
-        from spacetimepy.core.monitoring import SpaceTimeMonitor
-        from spacetimepy.core.models import FunctionCall, MonitoringSession
+        from spacetimepy import get_active_spacetime
 
-        monitor = SpaceTimeMonitor.get_instance()
-        if monitor is None or getattr(monitor, "session", None) is None:
-            payload["error"] = "SpaceTimePy is loaded but monitoring is not initialized."
+        space = get_active_spacetime()
+        if space is None:
+            payload["error"] = (
+                "SpaceTimePy is loaded but there is no active SpaceTime runtime."
+            )
         else:
-            db_session = monitor.session
-            current_session = getattr(monitor, "current_session", None)
-            if current_session is None:
-                current_session = (
-                    db_session.query(MonitoringSession)
-                    .order_by(MonitoringSession.start_time.desc())
-                    .first()
-                )
-            if current_session is None:
-                payload["error"] = "No SpaceTime monitoring session was found."
+            space.commit()
+            sessions = space.data.list_sessions()
+            if not sessions:
+                payload["error"] = "No SpaceTime execution session was found."
             else:
+                current_session = sessions[-1]
                 payload["session"] = {
                     "id": current_session.id,
                     "name": current_session.name,
                 }
-                baseline = (current_session.session_metadata or {}).get(
+                baseline = current_session.attributes.get(
                     "spx_jupyter_baseline",
                     {},
                 )
-                payload["baselineCombinationKey"] = baseline.get("combinationKey")
-                payload["baselineCombinationLabel"] = baseline.get("combinationLabel")
-                calls = (
-                    db_session.query(FunctionCall)
-                    .filter(FunctionCall.session_id == current_session.id)
-                    .all()
+                payload["baselineCombinationKey"] = baseline.get(
+                    "combinationKey"
                 )
-                calls.sort(
-                    key=lambda call: (
-                        call.order_in_session is None,
-                        call.order_in_session if call.order_in_session is not None else 0,
-                        call.start_time.isoformat() if call.start_time else "",
-                    )
+                payload["baselineCombinationLabel"] = baseline.get(
+                    "combinationLabel"
                 )
-                manager = getattr(monitor, "object_manager", None)
-                baseline_stages = _spx_summarize_workflow(_spx_find_notebook_workflow())
+
+                branches = [
+                    space.data.get_branch(summary.id)
+                    for summary in current_session.branches
+                ]
+                root = next(
+                    (
+                        branch
+                        for branch in branches
+                        if branch.parent_branch_id is None
+                    ),
+                    None,
+                )
+                if root is None:
+                    raise RuntimeError("The latest session has no root branch.")
+                branches = [
+                    branch
+                    for branch in branches
+                    if branch.parent_branch_id is None
+                    or branch.status == "completed"
+                ]
+
+                baseline_stages = _spx_summarize_workflow(
+                    _spx_find_notebook_workflow()
+                )
                 if baseline_stages:
                     payload["inputStage"] = baseline_stages[0]
-                effective_branch_by_call_id = {}
-                for call in calls:
-                    branch = (call.call_metadata or {}).get("spx_branch")
-                    if branch:
-                        effective_branch_by_call_id[call.id] = dict(branch)
 
-                changed = True
-                while changed:
-                    changed = False
-                    for call in calls:
-                        if call.id in effective_branch_by_call_id:
-                            continue
-                        parent_branch = effective_branch_by_call_id.get(call.parent_call_id)
-                        if parent_branch:
-                            effective_branch_by_call_id[call.id] = dict(parent_branch)
-                            changed = True
-
-                base_calls = [
-                    call for call in calls
-                    if call.id not in effective_branch_by_call_id
+                all_steps = [
+                    step
+                    for branch in branches
+                    for step in branch.steps
                 ]
-                base_call_index_by_id = {
-                    call.id: index for index, call in enumerate(base_calls)
-                }
-                for call in calls:
-                    metadata_branch = (call.call_metadata or {}).get("spx_branch")
-                    branch = effective_branch_by_call_id.get(call.id)
-                    if metadata_branch or not branch:
+                step_calls = {}
+                step_local_references = {}
+                all_references = []
+                for step in all_steps:
+                    call, references = _spx_call_for_step(space, step)
+                    if call is None:
                         continue
-                    parent_branch = effective_branch_by_call_id.get(call.parent_call_id, branch)
-                    parent_source_id = parent_branch.get("sourceCallId")
-                    parent_source_index = base_call_index_by_id.get(parent_source_id, -1)
-                    source_call = next(
-                        (
-                            candidate for candidate in base_calls[parent_source_index + 1:]
-                            if candidate.function == call.function
-                        ),
-                        None,
-                    )
-                    if source_call is not None:
-                        branch["sourceCallId"] = source_call.id
-                base_stage_by_call_id = {
-                    call.id: baseline_stages[index + 1]
-                    for index, call in enumerate(base_calls)
-                    if index + 1 < len(baseline_stages)
-                }
-                base_stage_index_by_call_id = {
-                    call.id: index + 1 for index, call in enumerate(base_calls)
-                }
-                branch_stages = {}
-                for call in calls:
-                    metadata = call.call_metadata or {}
-                    branch = effective_branch_by_call_id.get(call.id)
-                    stages = metadata.get("spx_branch_stages")
-                    if branch and stages:
-                        branch_stages[branch["id"]] = stages
+                    step_calls[step.id] = call
+                    step_local_references[step.id] = references
+                    all_references.extend(references.values())
+                loaded_values = space.data.load_values(all_references)
 
+                branch_stages = {
+                    branch.id: branch.attributes.get(
+                        "spx_workflow_stages",
+                        [],
+                    )
+                    for branch in branches
+                }
                 feature_names = {
                     feature
                     for stages in [baseline_stages, *branch_stages.values()]
@@ -143,28 +152,76 @@ try:
                     for feature in stage.get("histograms", {})
                 }
                 payload["features"] = sorted(feature_names)
-                for call in calls:
-                    metadata = call.call_metadata or {}
-                    branch = effective_branch_by_call_id.get(call.id)
-                    stage = base_stage_by_call_id.get(call.id)
-                    if branch:
-                        source_stage_index = base_stage_index_by_call_id.get(branch.get("sourceCallId"))
-                        stages = branch_stages.get(branch.get("id"), [])
-                        if source_stage_index is not None and source_stage_index < len(stages):
-                            stage = stages[source_stage_index]
-                    args = []
-                    if manager is not None:
-                        for name, ref in (call.locals_refs or {}).items():
-                            arg = _spx_argument(manager, name, ref)
-                            if arg is not None:
-                                args.append(arg)
-                    payload["nodes"].append({
-                        "id": call.id,
-                        "function": call.function,
-                        "branch": branch,
-                        "stage": stage,
-                        "arguments": args,
-                    })
+
+                baseline_stage_by_step_id = {
+                    step.id: baseline_stages[index + 1]
+                    for index, step in enumerate(root.steps)
+                    if index + 1 < len(baseline_stages)
+                }
+
+                for branch in branches:
+                    branch_data = None
+                    stage_start = int(
+                        branch.attributes.get("spx_stage_start_index", 0)
+                    )
+                    if branch.parent_branch_id is not None:
+                        parent_path = space.data.get_branch(
+                            branch.parent_branch_id,
+                            resolve=True,
+                        ).steps
+                        fork_index = next(
+                            (
+                                index
+                                for index, step in enumerate(parent_path)
+                                if step.id == branch.forked_from_step_id
+                            ),
+                            None,
+                        )
+                        from_step_id = (
+                            parent_path[fork_index - 1].id
+                            if fork_index is not None and fork_index > 0
+                            else None
+                        )
+                        branch_data = {
+                            "id": str(branch.id),
+                            "label": branch.name or "Variant",
+                            "fromStepId": from_step_id,
+                            "sourceStepId": branch.forked_from_step_id,
+                            "combinationKey": branch.configuration_key,
+                            "combinationLabel": branch.attributes.get(
+                                "spx_combination_label"
+                            ),
+                            "parentCombinationKey": branch.attributes.get(
+                                "spx_parent_combination_key"
+                            ),
+                        }
+
+                    stages = branch_stages.get(branch.id, [])
+                    for index, step in enumerate(branch.steps):
+                        call = step_calls.get(step.id)
+                        if call is None:
+                            continue
+                        stage = (
+                            baseline_stage_by_step_id.get(step.id)
+                            if branch.parent_branch_id is None
+                            else (
+                                stages[stage_start + index + 1]
+                                if stage_start + index + 1 < len(stages)
+                                else None
+                            )
+                        )
+                        payload["nodes"].append(
+                            {
+                                "id": step.id,
+                                "function": call.function_name,
+                                "branch": branch_data,
+                                "stage": stage,
+                                "arguments": _spx_arguments(
+                                    step_local_references.get(step.id, {}),
+                                    loaded_values,
+                                ),
+                            }
+                        )
 except Exception as exc:
     payload["error"] = f"{type(exc).__name__}: {exc}"
 

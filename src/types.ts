@@ -55,8 +55,8 @@ export interface WorkflowStageSummary {
 export interface SpaceTimeTraceBranch {
   id: string;
   label: string;
-  fromCallId: number | string | null;
-  sourceCallId: number | string;
+  fromStepId: number | string | null;
+  sourceStepId: number | string;
   combinationKey?: string;
   combinationLabel?: string;
   parentCombinationKey?: string;
@@ -89,8 +89,8 @@ export interface VariantReexecutionResult {
   error?: string;
   reused?: boolean;
   branchId?: string;
-  branchFromCallId?: number | string | null;
-  callIds?: Array<number | string>;
+  branchFromStepId?: number | string | null;
+  stepIds?: Array<number | string>;
 }
 
 export interface SpaceTimeTracePayload {

@@ -18,11 +18,11 @@ const keys = {
 function branch(
   id: string,
   label: string,
-  fromCallId: number | null,
-  sourceCallId: number,
+  fromStepId: number | null,
+  sourceStepId: number,
   combinationKey: string
 ): SpaceTimeTraceBranch {
-  return { id, label, fromCallId, sourceCallId, combinationKey };
+  return { id, label, fromStepId, sourceStepId, combinationKey };
 }
 
 function node(id: number, branchData?: SpaceTimeTraceBranch): SpaceTimeTraceNode {

@@ -1,4 +1,5 @@
 import {
+  FINISH_WORKFLOW_RECORDING_TEMPLATE,
   REEXECUTE_VARIANT_TEMPLATE,
   TRACE_QUERY_TEMPLATE,
   WORKFLOW_SUMMARY_SOURCE
@@ -12,6 +13,7 @@ const WORKFLOW_SUMMARY_PLACEHOLDER = '# __SPX_WORKFLOW_SUMMARY__';
 const TRACE_PREFIX_PLACEHOLDER = '__SPX_TRACE_JSON_PREFIX__';
 const REEXECUTE_PREFIX_PLACEHOLDER = '__SPX_REEXECUTE_JSON_PREFIX__';
 const REQUEST_PLACEHOLDER = '__SPX_REQUEST_JSON__';
+const RECORDING_STATUS_PLACEHOLDER = '__SPX_RECORDING_STATUS__';
 
 function replacePlaceholder(
   template: string,
@@ -59,6 +61,16 @@ export function buildReexecutionCode(
     withRequest,
     REEXECUTE_PREFIX_PLACEHOLDER,
     REEXECUTE_JSON_PREFIX
+  );
+}
+
+export function buildFinishWorkflowRecordingCode(
+  status: 'completed' | 'failed'
+): string {
+  return replacePlaceholder(
+    FINISH_WORKFLOW_RECORDING_TEMPLATE,
+    RECORDING_STATUS_PLACEHOLDER,
+    JSON.stringify(status)
   );
 }
 

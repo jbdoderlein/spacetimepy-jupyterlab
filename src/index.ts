@@ -24,6 +24,7 @@ import { Widget } from '@lumino/widgets';
 
 import { combinationForTargets, parseCombinationKey } from './combinations';
 import {
+  buildFinishWorkflowRecordingCode,
   buildReexecutionCode,
   isolateKernelCode,
   REEXECUTE_JSON_PREFIX,
@@ -605,7 +606,9 @@ function getActiveEditorContext(notebooks: INotebookTracker):
 }
 
 function cellContainsWorkflowBuilder(cell: Cell): boolean {
-  return cell.model.sharedModel.getSource().includes(WORKFLOW_MARKER);
+  return new RegExp(`\\b${WORKFLOW_MARKER}\\s*\\(`).test(
+    cell.model.sharedModel.getSource()
+  );
 }
 
 function normalizeSelection(
@@ -1036,28 +1039,31 @@ import sys
 
 payload = json.loads(${payload})
 if "spacetimepy" in sys.modules:
-    from spacetimepy.core.models import MonitoringSession
-    from spacetimepy.core.monitoring import SpaceTimeMonitor
+    from spacetimepy import get_active_spacetime
 
-    monitor = SpaceTimeMonitor.get_instance()
-    if monitor is not None and getattr(monitor, "session", None) is not None:
-        db_session = monitor.session
-        monitoring_session = getattr(monitor, "current_session", None)
-        if monitoring_session is None:
-            monitoring_session = (
-                db_session.query(MonitoringSession)
-                .order_by(MonitoringSession.start_time.desc())
-                .first()
+    space = get_active_spacetime()
+    if space is not None:
+        sessions = space.data.list_sessions()
+        if sessions:
+            space.capture.annotate_session(
+                sessions[-1].id,
+                {"spx_jupyter_baseline": payload},
             )
-        if monitoring_session is not None:
-            metadata = dict(monitoring_session.session_metadata or {})
-            metadata["spx_jupyter_baseline"] = payload
-            monitoring_session.session_metadata = metadata
-            db_session.commit()
 `,
     true
   );
   return execution.ok;
+}
+
+async function finishWorkflowRecording(
+  panel: NotebookPanel,
+  status: 'completed' | 'failed'
+): Promise<KernelExecutionResult> {
+  return executeKernel(
+    panel,
+    buildFinishWorkflowRecordingCode(status),
+    true
+  );
 }
 
 function createVariantReexecutionRequest(
@@ -1432,12 +1438,25 @@ const plugin: JupyterFrontEndPlugin<void> = {
     });
 
     NotebookActions.executed.connect(async (_, args) => {
-      if (!args.success || !cellContainsWorkflowBuilder(args.cell)) {
+      if (!cellContainsWorkflowBuilder(args.cell)) {
         return;
       }
 
       const notebookPanel = findNotebookPanel(notebooks, args.notebook);
       if (!notebookPanel) {
+        return;
+      }
+
+      const finalization = await finishWorkflowRecording(
+        notebookPanel,
+        args.success ? 'completed' : 'failed'
+      );
+      if (!finalization.ok) {
+        console.warn(
+          `Could not finish the SpaceTime workflow recording: ${finalization.error}`
+        );
+      }
+      if (!args.success) {
         return;
       }
 

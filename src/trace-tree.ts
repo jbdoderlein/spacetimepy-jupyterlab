@@ -18,7 +18,7 @@ export function buildWorkflowTree(
     arguments: []
   };
   const root: WorkflowTreeDatum = { node: inputNode, children: [] };
-  const treeNodeByCallId = new Map<string, WorkflowTreeDatum>([
+  const treeNodeByStepId = new Map<string, WorkflowTreeDatum>([
     [String(inputNode.id), root]
   ]);
   const baselineNodes = trace.nodes.filter(node => !node.branch);
@@ -31,7 +31,7 @@ export function buildWorkflowTree(
     };
     baselineParent.children.push(datum);
     baselineParent = datum;
-    treeNodeByCallId.set(String(node.id), datum);
+    treeNodeByStepId.set(String(node.id), datum);
   });
   baselineParent.combinationKey = baselineCombinationKey;
 
@@ -54,7 +54,7 @@ export function buildWorkflowTree(
         (node): WorkflowTreeDatum => ({ node, children: [] })
       );
       data.forEach(datum => {
-        treeNodeByCallId.set(String(datum.node.id), datum);
+        treeNodeByStepId.set(String(datum.node.id), datum);
       });
       return { branchNodes, data };
     }
@@ -66,15 +66,15 @@ export function buildWorkflowTree(
     }
     const branch = branchNodes[0].branch!;
     const sourceIndex = baselineNodes.findIndex(
-      node => String(node.id) === String(branch.sourceCallId)
+      node => String(node.id) === String(branch.sourceStepId)
     );
     const fallbackParent =
       sourceIndex > 0
-        ? treeNodeByCallId.get(String(baselineNodes[sourceIndex - 1].id))
+        ? treeNodeByStepId.get(String(baselineNodes[sourceIndex - 1].id))
         : root;
     const branchParent =
-      branch.fromCallId !== null
-        ? treeNodeByCallId.get(String(branch.fromCallId)) ?? fallbackParent
+      branch.fromStepId !== null
+        ? treeNodeByStepId.get(String(branch.fromStepId)) ?? fallbackParent
         : fallbackParent;
     data[0].edgeLabel = branch.label ?? branch.combinationLabel ?? 'Variant';
     (branchParent ?? root).children.push(data[0]);

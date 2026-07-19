@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildFinishWorkflowRecordingCode,
   buildReexecutionCode,
   isolateKernelCode,
   REEXECUTE_JSON_PREFIX,
@@ -45,7 +46,10 @@ describe('kernel code templates', () => {
     expect(code).toContain(`request = json.loads(${encodedRequest})`);
     expect(code).toContain(`print("${REEXECUTE_JSON_PREFIX}"`);
     expect(code).toContain('terminal_execution_call = next(');
-    expect(code).toContain('execution_function(*execution_args, **execution_kwargs)');
+    expect(code).toContain('space.replay.run(');
+    expect(code).toContain('execution_result = execution_function(');
+    expect(code).toContain('from spacetimepy import get_active_spacetime');
+    expect(code).not.toContain('spacetimepy.core');
     expect(code).not.toContain('__SPX_');
   });
 
@@ -56,5 +60,15 @@ describe('kernel code templates', () => {
     expect(code).toContain('<spacetimepy-jupyterlab>');
     expect(code).toContain('__import__("builtins").__dict__');
     expect(code).toContain('temporary_value = 1');
+  });
+
+  it('builds the workflow recording safety-net call', () => {
+    const completed = buildFinishWorkflowRecordingCode('completed');
+    const failed = buildFinishWorkflowRecordingCode('failed');
+
+    expect(completed).toContain('finish_active_workflow_recording("completed")');
+    expect(failed).toContain('finish_active_workflow_recording("failed")');
+    expect(completed).not.toContain('__SPX_');
+    expect(failed).not.toContain('__SPX_');
   });
 });

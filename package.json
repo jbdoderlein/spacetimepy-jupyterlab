@@ -1,6 +1,6 @@
 {
   "name": "spacetimepy-jupyterlab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Exploratory notebook controls and side panel for JupyterLab.",
   "homepage": "https://github.com/example/spacetimepy-jupyterlab",
   "bugs": {
