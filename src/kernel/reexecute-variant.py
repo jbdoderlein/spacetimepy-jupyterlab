@@ -268,6 +268,34 @@ try:
         replay_chain.append(outer_call)
         chain_call = outer_call
 
+    assigned_names = set()
+    assignment = parents.get(chain_call)
+    if isinstance(assignment, ast.Assign) and assignment.value is chain_call:
+        assignment_targets = assignment.targets
+    elif isinstance(assignment, ast.AnnAssign) and assignment.value is chain_call:
+        assignment_targets = [assignment.target]
+    else:
+        assignment_targets = []
+    for assignment_target in assignment_targets:
+        assigned_names.update(
+            node.id for node in ast.walk(assignment_target)
+            if isinstance(node, ast.Name)
+        )
+    terminal_execution_call = next(
+        (
+            call for call in ast.walk(tree)
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "execute_workflow"
+                and isinstance(call.func.value, ast.Name)
+                and call.func.value.id in assigned_names
+                and (call.lineno, call.col_offset) > (chain_call.lineno, chain_call.col_offset)
+            )
+        ),
+        None,
+    )
+
     previous_calls = [
         call for call in base_calls
         if call.order_in_session is not None
@@ -337,6 +365,18 @@ try:
             previous_branch_call_id = replayed_call.id
         if call_result is not None:
             live_receiver = call_result
+
+    if terminal_execution_call is not None:
+        monitor._parent_id_for_next_call = None
+        execution_method_name = terminal_execution_call.func.attr
+        execution_function = getattr(live_receiver, execution_method_name)
+        execution_args, execution_kwargs = _spx_evaluate_arguments(
+            terminal_execution_call,
+            user_namespace,
+        )
+        execution_result = execution_function(*execution_args, **execution_kwargs)
+        if execution_result is not None:
+            live_receiver = execution_result
 
     recorded_branch_calls = (
         db_session.query(FunctionCall)

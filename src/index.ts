@@ -25,6 +25,7 @@ import { Widget } from '@lumino/widgets';
 import { combinationForTargets, parseCombinationKey } from './combinations';
 import {
   buildReexecutionCode,
+  isolateKernelCode,
   REEXECUTE_JSON_PREFIX,
   TRACE_JSON_PREFIX,
   TRACE_QUERY_CODE
@@ -1147,7 +1148,7 @@ async function executeKernel(
   }
 
   const future = kernel.requestExecute({
-    code,
+    code: isolateKernelCode(code),
     silent,
     stop_on_error: true,
     store_history: false

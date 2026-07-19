@@ -103,10 +103,25 @@ def _spx_find_notebook_workflow():
         namespace = get_ipython().user_ns
     except Exception:
         return None
-    preferred = namespace.get("workflow")
-    if _spx_unwrap_workflow(preferred) is not None:
-        return preferred
-    for value in reversed(list(namespace.values())):
-        if _spx_unwrap_workflow(value) is not None:
-            return value
-    return None
+    candidates = []
+    seen = set()
+    for name, value in reversed(list(namespace.items())):
+        # Older extension versions executed their helpers directly in user_ns.
+        # Never mistake one of those temporary replay objects for notebook data.
+        if name == "live_receiver" or name.startswith("_spx_"):
+            continue
+        workflow = _spx_unwrap_workflow(value)
+        if workflow is None or id(workflow) in seen:
+            continue
+        seen.add(id(workflow))
+        try:
+            stage_count = len(workflow.get_all_set_from_workflow())
+        except Exception:
+            stage_count = 0
+        candidates.append((stage_count, value))
+    if not candidates:
+        return None
+    # Prefer a workflow with materialized operator outputs. Reversed namespace
+    # order remains the tie-breaker, so the most recently assigned valid
+    # notebook workflow wins.
+    return max(candidates, key=lambda candidate: candidate[0])[1]

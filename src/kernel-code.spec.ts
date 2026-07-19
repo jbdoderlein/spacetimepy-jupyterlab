@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildReexecutionCode,
+  isolateKernelCode,
   REEXECUTE_JSON_PREFIX,
   TRACE_JSON_PREFIX,
   TRACE_QUERY_CODE
@@ -9,7 +10,10 @@ import {
 import type { VariantReexecutionRequest } from './types';
 
 const request: VariantReexecutionRequest = {
-  source: 'workflow.filter_operator(1)',
+  source: [
+    'w = workflow.filter_operator(1).output(writer)',
+    'w.execute_workflow()'
+  ].join('\\n'),
   targets: [
     {
       targetId: 'A',
@@ -40,6 +44,17 @@ describe('kernel code templates', () => {
 
     expect(code).toContain(`request = json.loads(${encodedRequest})`);
     expect(code).toContain(`print("${REEXECUTE_JSON_PREFIX}"`);
+    expect(code).toContain('terminal_execution_call = next(');
+    expect(code).toContain('execution_function(*execution_args, **execution_kwargs)');
     expect(code).not.toContain('__SPX_');
+  });
+
+  it('isolates extension helpers from the notebook user namespace', () => {
+    const code = isolateKernelCode('temporary_value = 1');
+
+    expect(code).toContain('exec(compile(');
+    expect(code).toContain('<spacetimepy-jupyterlab>');
+    expect(code).toContain('__import__("builtins").__dict__');
+    expect(code).toContain('temporary_value = 1');
   });
 });

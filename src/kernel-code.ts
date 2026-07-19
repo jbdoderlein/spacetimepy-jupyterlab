@@ -61,3 +61,9 @@ export function buildReexecutionCode(
     REEXECUTE_JSON_PREFIX
   );
 }
+
+export function isolateKernelCode(code: string): string {
+  return `exec(compile(${JSON.stringify(
+    code
+  )}, "<spacetimepy-jupyterlab>", "exec"), {"__builtins__": __import__("builtins").__dict__})`;
+}
