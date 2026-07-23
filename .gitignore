@@ -11,3 +11,5 @@ node_modules/
 *.tsbuildinfo
 spacetimepy_jupyterlab/labextension/*
 src/generated/
+
+*.pyc
