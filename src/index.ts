@@ -68,8 +68,9 @@ const plugin: JupyterFrontEndPlugin<void> = {
       let trace: SpaceTimeTracePayload | undefined;
       let revision = 0;
       let suppressed = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let savingSource: string | undefined;
       const source = sources.get(cell) ?? cell.model.sharedModel.getSource();
+      let branchSource = source;
       const current = (): boolean => generation === token && !cell.isDisposed;
       if (!view.isAttached) { app.shell.add(view, 'right'); }
       app.shell.activateById(view.id);
@@ -81,32 +82,40 @@ const plugin: JupyterFrontEndPlugin<void> = {
         return result;
       };
       const changed = (): void => {
-        if (suppressed || !current()) { return; }
+        if (!suppressed && current()) { ++revision; }
+      };
+      const saved = (_sender: unknown, state: 'started' | 'completed' | 'failed'): void => {
+        if (!current()) { return; }
+        if (state === 'started') {
+          savingSource = cell.model.sharedModel.getSource();
+          return;
+        }
+        const editedSource = savingSource;
+        savingSource = undefined;
+        if (state !== 'completed' || editedSource === undefined ||
+            editedSource !== cell.model.sharedModel.getSource() || editedSource === branchSource) { return; }
         const version = ++revision;
-        if (timer) { clearTimeout(timer); }
-        timer = setTimeout(() => {
-          const editedSource = cell.model.sharedModel.getSource();
-          enqueue(async () => {
-            if (!current() || version !== revision) { return; }
-            const result = await request<LiveResult>(notebookPanel, buildLiveCode({ action: 'edit', branchId, source: editedSource }), REEXECUTE_JSON_PREFIX);
-            if (!current()) { return; }
-            const updated = result.ok ? await refresh() : trace;
-            if (!current()) { return; }
-            trace = updated;
-            if (version !== revision) { return; }
-            if (result.ok) {
-              branchId = result.branchId!;
-              view.renderTrace(trace!, branchId);
-            } else {
-              if (trace) { view.renderTrace(trace, branchId); }
-              view.renderStatus(result.error ?? 'Live execution failed.', true);
-            }
-          }, () => current() && version === revision);
-        }, 500);
+        enqueue(async () => {
+          if (!current() || version !== revision) { return; }
+          const result = await request<LiveResult>(notebookPanel, buildLiveCode({ action: 'edit', branchId, source: editedSource }), REEXECUTE_JSON_PREFIX);
+          if (!current()) { return; }
+          const updated = result.ok ? await refresh() : trace;
+          if (!current()) { return; }
+          trace = updated;
+          if (version !== revision) { return; }
+          if (result.ok) {
+            branchId = result.branchId!;
+            branchSource = editedSource;
+            view.renderTrace(trace!, branchId);
+          } else {
+            if (trace) { view.renderTrace(trace, branchId); }
+            view.renderStatus(result.error ?? 'Live execution failed.', true);
+          }
+        }, () => current() && version === revision);
       };
       const stop = (): void => {
-        if (timer) { clearTimeout(timer); }
         cell.model.sharedModel.changed.disconnect(changed);
+        notebookPanel.context.saveState.disconnect(saved);
         cell.disposed.disconnect(stop);
         notebookPanel.sessionContext.kernelChanged.disconnect(stop);
         notebookPanel.sessionContext.statusChanged.disconnect(statusChanged);
@@ -127,8 +136,8 @@ const plugin: JupyterFrontEndPlugin<void> = {
         const branch = trace?.branches.find(branch => branch.id === id);
         if (!branch || !current()) { return; }
         ++revision;
-        if (timer) { clearTimeout(timer); }
         branchId = id;
+        branchSource = branch.source;
         suppressed = true;
         try { cell.model.sharedModel.setSource(branch.source); } finally { suppressed = false; }
         view.renderTrace(trace!, branchId);
@@ -143,7 +152,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
         trace = updated;
         view.renderTrace(trace, branchId);
         cell.model.sharedModel.changed.connect(changed);
-        if (cell.model.sharedModel.getSource() !== source) { changed(); }
+        notebookPanel.context.saveState.connect(saved);
       }, current);
     });
   }

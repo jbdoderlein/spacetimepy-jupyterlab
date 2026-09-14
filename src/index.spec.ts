@@ -55,13 +55,18 @@ function setup() {
     } });
     return future;
   }) };
-  const panel = { content: {}, sessionContext: { session: { kernel }, kernelChanged: new state.Signal(), statusChanged: new state.Signal(), kernelDisplayStatus: 'idle' } };
+  const panel = { content: {}, context: { saveState: new state.Signal() }, sessionContext: { session: { kernel }, kernelChanged: new state.Signal(), statusChanged: new state.Signal(), kernelDisplayStatus: 'idle' } };
   const app = { shell: { add: vi.fn(), activateById: vi.fn() } };
   plugin.activate(app as any, { forEach: (fn: any) => fn(panel) });
   state.scheduled.emit({ cell });
   state.executed.emit({ cell, notebook: panel.content, success: true });
   const history = { loaded: true, rootBranchId: '1', nodes: [], features: [], branches: [{ id: '1', source: 'initial' }, { id: '2', source: 'edited' }] };
-  return { cell, panel, pending, history, view: state.views[0], kernel };
+  const save = async () => {
+    panel.context.saveState.emit('started');
+    panel.context.saveState.emit('completed');
+    await flush();
+  };
+  return { cell, panel, pending, history, view: state.views[0], kernel, save };
 }
 
 beforeEach(() => {
@@ -71,24 +76,28 @@ beforeEach(() => {
 
 describe('live cell requests', () => {
   it('restores a selected branch without a kernel request and uses it as the next parent', async () => {
-    const { cell, pending, history, view } = setup();
+    const { cell, pending, history, view, save } = setup();
     await flush(); pending[0].finish({ ok: true, branchId: '1' });
     await flush(); pending[1].finish(history); await flush();
     view.select('2');
     expect(cell.source).toBe('edited');
     await vi.advanceTimersByTimeAsync(600);
     expect(pending).toHaveLength(2);
+    await save();
+    expect(pending).toHaveLength(2);
     cell.model.sharedModel.setSource('new edit');
     await vi.advanceTimersByTimeAsync(600);
+    expect(pending).toHaveLength(2);
+    await save();
     expect(pending[2].request).toEqual({ action: 'edit', branchId: '2', source: 'new edit' });
   });
 
   it('serializes edits and prevents an older result from replacing the current display', async () => {
-    const { cell, pending, history, view } = setup();
+    const { cell, pending, history, view, save } = setup();
     await flush(); pending[0].finish({ ok: true, branchId: '1' });
     await flush(); pending[1].finish(history); await flush();
-    cell.model.sharedModel.setSource('first'); await vi.advanceTimersByTimeAsync(600);
-    cell.model.sharedModel.setSource('second'); await vi.advanceTimersByTimeAsync(600);
+    cell.model.sharedModel.setSource('first'); await save();
+    cell.model.sharedModel.setSource('second'); await save();
     expect(pending).toHaveLength(3);
     pending[2].finish({ ok: true, branchId: '2' }); await flush();
     pending[3].finish(history); await flush();
@@ -98,16 +107,33 @@ describe('live cell requests', () => {
   });
 
   it('preserves history on an invalid edit and removes listeners on kernel restart', async () => {
-    const { cell, panel, pending, history, view } = setup();
+    const { cell, panel, pending, history, view, save } = setup();
     await flush(); pending[0].finish({ ok: true, branchId: '1' });
     await flush(); pending[1].finish(history); await flush();
-    cell.model.sharedModel.setSource('invalid'); await vi.advanceTimersByTimeAsync(600);
+    cell.model.sharedModel.setSource('invalid'); await save();
     pending[2].finish({ ok: false, invalid: true, error: 'Invalid source.' }); await flush();
     expect(view.renderTrace).toHaveBeenLastCalledWith(history, '1');
     expect(view.renderStatus).toHaveBeenLastCalledWith('Invalid source.', true);
     panel.sessionContext.kernelDisplayStatus = 'restarting'; panel.sessionContext.statusChanged.emit();
     expect(cell.model.sharedModel.changed.slots).toHaveLength(0);
+    expect(panel.context.saveState.slots).toHaveLength(0);
     cell.model.sharedModel.setSource('later'); await vi.advanceTimersByTimeAsync(600);
     expect(pending).toHaveLength(3);
   });
+});
+
+it('ignores failed saves and text changed during a save', async () => {
+  const { cell, panel, pending, history } = setup();
+  await flush(); pending[0].finish({ ok: true, branchId: '1' });
+  await flush(); pending[1].finish(history); await flush();
+  cell.model.sharedModel.setSource('edited');
+  panel.context.saveState.emit('started');
+  panel.context.saveState.emit('failed');
+  await flush();
+  expect(pending).toHaveLength(2);
+  panel.context.saveState.emit('started');
+  cell.model.sharedModel.setSource('unsaved change');
+  panel.context.saveState.emit('completed');
+  await flush();
+  expect(pending).toHaveLength(2);
 });

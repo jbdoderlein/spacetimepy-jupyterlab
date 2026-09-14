@@ -213,3 +213,32 @@ w.execute_live_workflow()'''
     finally:
         client.stop_channels()
         manager.shutdown_kernel(now=True)
+
+
+def test_consecutive_filter_edits_include_empty_results(live):
+    space, ns, source, root, session, counts, monkeypatch = live
+    first_source = source.replace('> 2000', '> 1000')
+    first = kernel('live-workflow.py', dict(action='edit', branchId=root, source=first_source), ns, monkeypatch)
+    assert first['ok'], first
+    before = counts.copy()
+    empty_source = first_source.replace("== 'Python'", "== 'MissingLanguage'")
+    empty = kernel('live-workflow.py', dict(action='edit', branchId=first['branchId'], source=empty_source), ns, monkeypatch)
+    assert empty['ok'], empty
+    assert {key: counts[key] - before[key] for key in counts} == dict(commit=0, language=1, sample=1, load=0, write=1)
+    assert json.loads(ns['writer'].set_path.read_text()) == []
+    branch = space.data.get_branch(int(empty['branchId']))
+    assert branch.status == 'completed'
+    assert [stage['sampleSize'] for stage in branch.attributes['spx_workflow_stages']][-2:] == [0, 0]
+    history = kernel('trace-query.py', dict(sessionId=session), ns, monkeypatch)
+    assert empty['branchId'] in [branch['id'] for branch in history['branches']]
+    assert ns['w']._output.size() == 1
+    # Resume from the empty branch using the input before the language filter.
+    recovered_source = first_source.replace("== 'Python'", "== 'Java'")
+    recovered = kernel('live-workflow.py', dict(action='edit', branchId=empty['branchId'], source=recovered_source), ns, monkeypatch)
+    assert recovered['ok'], recovered
+    resumed_output = json.loads(ns['writer'].set_path.read_text())
+    assert resumed_output
+    exec(recovered_source.replace('execute_live_workflow()', 'execute_workflow()'), ns)
+    assert json.loads(ns['writer'].set_path.read_text()) == resumed_output
+    exec(empty_source.replace('execute_live_workflow()', 'execute_workflow()'), ns)
+    assert json.loads(ns['writer'].set_path.read_text()) == []
