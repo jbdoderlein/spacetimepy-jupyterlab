@@ -7,11 +7,9 @@ import {
 
 import { buildWorkflowTree } from './trace-tree';
 import type {
-  CaptureResult,
   SpaceTimeTraceNode,
   SpaceTimeTracePayload,
-  WorkflowTreeDatum,
-  WorkflowTreeSelection
+  WorkflowTreeDatum
 } from './types';
 
 function formatTraceValue(value: unknown): string {
@@ -35,9 +33,9 @@ function formatTraceValue(value: unknown): string {
 
 export class SpaceTimeWebView extends Widget {
   constructor(
-    private readonly onActivateCombination: (
-      combinationKey: string
-    ) => CaptureResult
+    private readonly onActivateBranch: (
+      branchId: string
+    ) => void
   ) {
     super();
     this.id = 'spacetimepy-webview-panel';
@@ -52,7 +50,7 @@ export class SpaceTimeWebView extends Widget {
 
   renderTrace(
     trace: SpaceTimeTracePayload,
-    selection: WorkflowTreeSelection
+    selection: string
   ): void {
     this.content.replaceChildren();
     this.currentTrace = trace;
@@ -112,18 +110,13 @@ export class SpaceTimeWebView extends Widget {
     this.content.append(graph);
     this.renderTraceTree(
       graph,
-      buildWorkflowTree(
-        trace,
-        selection.baselineCombinationKey,
-        selection.baselineCombinationLabel,
-        selection.variantLabelById
-      ),
-      selection.activeCombinationKey
+      buildWorkflowTree(trace),
+      selection
     );
   }
 
   renderStatus(message: string, isError = false): void {
-    this.content.replaceChildren();
+    this.content.querySelectorAll('.spx-trace-empty').forEach(node => node.remove());
     this.renderMessage(message, isError);
   }
 
@@ -139,7 +132,7 @@ export class SpaceTimeWebView extends Widget {
   private renderTraceTree(
     graph: HTMLElement,
     treeData: WorkflowTreeDatum,
-    activeCombinationKey: string
+    activeBranchId: string
   ): void {
     const nodeWidth = 220;
     const horizontalStep = 276;
@@ -152,7 +145,7 @@ export class SpaceTimeWebView extends Widget {
     const nodes = root.descendants();
     const activeLeaf = nodes.find(
       positionedNode =>
-        positionedNode.data.combinationKey === activeCombinationKey
+        positionedNode.data.branchId === activeBranchId
     );
     const activePath = new Set<WorkflowTreeDatum>(
       activeLeaf?.ancestors().map(positionedNode => positionedNode.data) ?? []
@@ -168,17 +161,14 @@ export class SpaceTimeWebView extends Widget {
         positionedNode.depth > 0 && activePath.has(positionedNode.data);
       const item = document.createElement('div');
       item.className = 'spx-trace-tree-item';
-      if (datum.combinationKey && positionedNode.children === undefined) {
+      if (datum.branchId && positionedNode.children === undefined) {
         const activate = (): void => {
-          const result = this.onActivateCombination(datum.combinationKey!);
-          if (!result.ok) {
-            this.renderStatus(result.message, true);
-          }
+          this.onActivateBranch(datum.branchId!);
         };
         item.classList.add('spx-trace-tree-leaf');
         item.tabIndex = 0;
         item.setAttribute('role', 'button');
-        item.title = 'Apply this variant configuration';
+        item.title = 'Restore this branch source and results';
         item.onclick = activate;
         item.onkeydown = event => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -187,7 +177,7 @@ export class SpaceTimeWebView extends Widget {
           }
         };
       }
-      if (datum.combinationKey === activeCombinationKey) {
+      if (datum.branchId === activeBranchId) {
         item.setAttribute('aria-current', 'true');
       }
       if (positionedNode.depth > 0) {
@@ -397,7 +387,7 @@ export class SpaceTimeWebView extends Widget {
   }
 
   private currentTrace: SpaceTimeTracePayload | null = null;
-  private currentSelection: WorkflowTreeSelection | null = null;
+  private currentSelection: string | null = null;
   private selectedFeature: string | null = null;
   private readonly content: HTMLDivElement;
 }

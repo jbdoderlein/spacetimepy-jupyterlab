@@ -10,11 +10,8 @@ const outputPath = resolve(
 const sources = [
   ['WORKFLOW_SUMMARY_SOURCE', 'src/kernel/workflow-summary.py'],
   ['TRACE_QUERY_TEMPLATE', 'src/kernel/trace-query.py'],
-  ['REEXECUTE_VARIANT_TEMPLATE', 'src/kernel/reexecute-variant.py'],
-  [
-    'FINISH_WORKFLOW_RECORDING_TEMPLATE',
-    'src/kernel/finish-workflow-recording.py'
-  ]
+  ['LIVE_WORKFLOW_TEMPLATE', 'src/kernel/live-workflow.py'],
+  ['LIVE_SOURCE', 'src/kernel/live-source.py']
 ];
 
 const declarations = await Promise.all(
