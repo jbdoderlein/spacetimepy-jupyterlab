@@ -60,6 +60,9 @@ export class SpaceTimeWebView extends Widget {
       this.selectedFeature = features[0] ?? null;
     }
 
+    const header = document.createElement('div');
+    header.className = 'spx-trace-header';
+    this.content.append(header);
     const title = document.createElement('div');
     title.className = 'spx-trace-title';
     title.textContent = trace.session?.name
@@ -67,11 +70,9 @@ export class SpaceTimeWebView extends Widget {
       : trace.session
         ? `Session ${trace.session.id}`
         : 'SpaceTime session trace';
-    this.content.append(title);
+    header.append(title);
 
     if (features.length > 0) {
-      const controls = document.createElement('div');
-      controls.className = 'spx-trace-controls';
       const featureLabel = document.createElement('label');
       featureLabel.className = 'spx-trace-feature-label';
       featureLabel.textContent = 'Feature';
@@ -91,8 +92,7 @@ export class SpaceTimeWebView extends Widget {
         }
       };
       featureLabel.append(featureSelect);
-      controls.append(featureLabel);
-      this.content.append(controls);
+      header.append(featureLabel);
     }
 
     if (trace.error) {
@@ -104,7 +104,6 @@ export class SpaceTimeWebView extends Widget {
       return;
     }
 
-    this.renderComparison(trace, selection);
     const graph = document.createElement('div');
     graph.className = 'spx-trace-graph';
     this.content.append(graph);
@@ -114,50 +113,6 @@ export class SpaceTimeWebView extends Widget {
       selection,
       trace
     );
-  }
-
-  private renderComparison(trace: SpaceTimeTracePayload, selection: string): void {
-    const variant = trace.branches.find(branch => branch.id === selection);
-    const reference = trace.branches.find(branch => branch.id === variant?.parentId);
-    if (!variant?.alignment || !reference) {
-      return;
-    }
-    const section = document.createElement('section');
-    section.className = 'spx-comparison';
-    const heading = document.createElement('h3');
-    heading.textContent = `Stage comparison: branch ${reference.id} → ${variant.id}`;
-    const note = document.createElement('p');
-    note.textContent = 'Stages match by operator name and execution order. These links do not establish semantic equivalence.';
-    const table = document.createElement('table');
-    const header = table.createTHead().insertRow();
-    for (const text of ['Reference stage', 'Variant stage', 'Relation']) {
-      const cell = document.createElement('th');
-      cell.textContent = text;
-      header.append(cell);
-    }
-    const body = table.createTBody();
-    const add = (oldIndex: number | null, newIndex: number | null): void => {
-      const row = body.insertRow();
-      const values = [
-        oldIndex === null ? '—' : `${oldIndex + 1}. ${reference.operators[oldIndex]} (${reference.stages[oldIndex].sampleSize} elements)`,
-        newIndex === null ? '—' : `${newIndex + 1}. ${variant.operators[newIndex]} (${variant.stages[newIndex].sampleSize} elements)`,
-        oldIndex === null ? 'Inserted' : newIndex === null ? 'Deleted' : 'Matched'
-      ];
-      for (const text of values) {
-        row.insertCell().textContent = text;
-      }
-    };
-    let oldIndex = 0;
-    let newIndex = 0;
-    for (const [oldMatch, newMatch] of variant.alignment.pairs) {
-      while (oldIndex < oldMatch) { add(oldIndex++, null); }
-      while (newIndex < newMatch) { add(null, newIndex++); }
-      add(oldIndex++, newIndex++);
-    }
-    while (oldIndex < reference.operators.length) { add(oldIndex++, null); }
-    while (newIndex < variant.operators.length) { add(null, newIndex++); }
-    section.append(heading, note, table);
-    this.content.append(section);
   }
 
   renderStatus(message: string, isError = false): void {

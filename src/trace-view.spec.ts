@@ -9,12 +9,12 @@ vi.mock('@lumino/widgets', () => ({ Widget: class {
 } }));
 import { SpaceTimeWebView } from './trace-view';
 
-it('shows correspondence and unmatched stages, and selects output endpoints', () => {
+it('selects output endpoints with the feature selector beside the title', () => {
   const select = vi.fn();
   const view = new SpaceTimeWebView(select);
   const stage = { index: 1, label: 'Filter', sampleSize: 3, histograms: {} };
   const trace: SpaceTimeTracePayload = {
-    loaded: true, rootBranchId: '1', features: [],
+    loaded: true, rootBranchId: '1', features: ['commitNb'],
     branches: [
       { id: '1', source: 'parent', parentId: null,
         operators: ['filter(A)', 'sample(B)'], stages: [stage, stage], stageStepIds: [1, 2], output: stage, alignment: null },
@@ -33,12 +33,10 @@ it('shows correspondence and unmatched stages, and selects output endpoints', ()
     ]
   };
   view.renderTrace(trace, '2');
-  const rows = [...view.node.querySelectorAll('tbody tr')].map(row => row.textContent);
-  expect(rows).toEqual([
-    '1. filter(A) (3 elements)1. filter(A) (3 elements)Matched',
-    '2. sample(B) (3 elements)—Deleted',
-    '—2. other(C) (3 elements)Inserted'
-  ]);
+  expect(view.node.querySelector('table')).toBeNull();
+  const header = view.node.querySelector('.spx-trace-header')!;
+  expect(header.querySelector('.spx-trace-title')).not.toBeNull();
+  expect(header.querySelector('select')?.value).toBe('commitNb');
   const endpoints = [...view.node.querySelectorAll<HTMLElement>('[role="button"]')];
   expect(endpoints).toHaveLength(3);
   expect(endpoints.every(node => node.textContent?.includes('Output'))).toBe(true);

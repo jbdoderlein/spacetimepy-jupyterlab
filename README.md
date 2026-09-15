@@ -53,7 +53,6 @@ Keep at least one operator. Nested workflows remain unsupported.
 The integration does not provide a separate move operation for reordering.
 ## Stage comparison
 
-The panel compares the selected branch with its parent. It lists matched, inserted, and deleted stages with their sample sizes.
 The graph places matched stages on the same row, including after operator insertion or deletion.
 It preserves execution order and places all output endpoints on a final row.
 The kernel aligns DSL operator names in execution order. Each occurrence can match at most once, and links cannot cross.
@@ -62,7 +61,7 @@ Python ASTs define expression equality without evaluation. Formatting changes do
 Identical expressions do not establish identical runtime values.
 For residual ties, it selects the lexicographically smallest sequence of `(reference index, variant index)` pairs.
 Thus, the earliest reference occurrence takes priority, followed by the earliest variant occurrence.
-Indices start at zero in stored metadata and at one in the panel.
+Indices start at zero in stored metadata.
 
 These links describe correspondence for this DSL. They do not establish semantic equivalence.
 The integration implements this strategy once in the kernel. It does not change the generic SpaceTimePy alignment contract.
