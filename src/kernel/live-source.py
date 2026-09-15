@@ -35,15 +35,42 @@ def _spx_parse(source):
             raise ValueError("Live execution supports only linear operator calls.")
     descriptions = [ast.unparse(ast.Call(func=ast.Name(id=c.func.attr, ctx=ast.Load()), args=c.args, keywords=c.keywords)) for c in operators]
     skeleton = copy.deepcopy(tree)
-    skeleton_calls = []
-    value = skeleton.body[0].value
-    while isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
-        skeleton_calls.append(value)
-        value = value.func.value
-    for call in skeleton_calls[1:-1]:
-        call.args = []
-        call.keywords = []
+    # Remove operator calls from the fixed input/output structure.
+    output = skeleton.body[0].value
+    input_call = output.func.value
+    for _ in operators:
+        input_call = input_call.func.value
+    output.func.value = input_call
     return name, operators, descriptions, ast.dump(skeleton)
+
+
+def _spx_align(old_calls, calls):
+    """Match names in order, then prefer equal argument ASTs.
+
+    Residual ties use the smallest sequence of (reference, variant) indices.
+    The indices start at zero. Argument expressions are not evaluated.
+    """
+    def key(call):
+        return ast.dump(ast.Call(func=ast.Name(id=call.func.attr, ctx=ast.Load()),
+                                 args=call.args, keywords=call.keywords))
+
+    old_keys, keys = list(map(key, old_calls)), list(map(key, calls))
+    n, m = len(old_calls), len(calls)
+    table = [[(0, 0, ()) for _ in range(m + 1)] for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            candidates = [table[i + 1][j], table[i][j + 1]]
+            if old_calls[i].func.attr == calls[j].func.attr:
+                count, unchanged, pairs = table[i + 1][j + 1]
+                candidates.append((count + 1, unchanged + (old_keys[i] == keys[j]),
+                                   ((i, j),) + pairs))
+            table[i][j] = min(candidates, key=lambda item: (-item[0], -item[1], item[2]))
+    pairs = table[0][0][2]
+    return {
+        "pairs": [list(pair) for pair in pairs],
+        "deleted": [i for i in range(n) if i not in {a for a, _ in pairs}],
+        "inserted": [j for j in range(m) if j not in {b for _, b in pairs}],
+    }
 
 
 def _spx_arguments(call, namespace):

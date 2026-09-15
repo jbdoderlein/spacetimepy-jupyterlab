@@ -130,7 +130,7 @@ def test_execution_counts_checkpoint_results_and_history(live):
 
 def test_invalid_unsupported_and_failed_edits_preserve_history(live):
     space, ns, source, root, session, counts, monkeypatch = live
-    for text in [source[:-1], source.replace('.random_selection_operator(1, seed=0)', ''), source.replace('.input(loader)', '.input(other)'), source.replace('random_selection_operator', 'manual_sampling_operator')]:
+    for text in [source[:-1], source.replace('.random_selection_operator(1, seed=0)', '.grouping_operator()'), source.replace('.input(loader)', '.input(other)'), source.replace('random_selection_operator', 'manual_sampling_operator')]:
         before = counts.copy()
         result = kernel('live-workflow.py', dict(action='edit', branchId=root, source=text), ns, monkeypatch)
         assert not result['ok']
@@ -242,3 +242,140 @@ def test_consecutive_filter_edits_include_empty_results(live):
     assert json.loads(ns['writer'].set_path.read_text()) == resumed_output
     exec(empty_source.replace('execute_live_workflow()', 'execute_workflow()'), ns)
     assert json.loads(ns['writer'].set_path.read_text()) == []
+
+
+def parse_scope():
+    scope = {}
+    exec((KERNEL / 'live-source.py').read_text(), scope)
+    return scope
+
+
+@pytest.mark.parametrize('old,new,pairs', [
+    (['filter_operator(1)'], ['filter_operator(2)'], [[0, 0]]),
+    (['filter_operator(1)', 'filter_operator(2)', 'random_selection_operator(3)'],
+     ['filter_operator(2)', 'filter_operator(4)', 'random_selection_operator(3)'], [[0, 0], [1, 1], [2, 2]]),
+    (['filter_operator(1)', 'systematic_selection_operator(2)', 'random_selection_operator(3)'],
+     ['filter_operator(1)', 'random_selection_operator(3)'], [[0, 0], [2, 1]]),
+    (['filter_operator(1)', 'random_selection_operator(3)'],
+     ['filter_operator(1)', 'systematic_selection_operator(2)', 'random_selection_operator(3)'], [[0, 0], [1, 2]]),
+    (['filter_operator(1)', 'filter_operator(2)'], ['filter_operator(2)'], [[1, 0]]),
+    (['filter_operator(2)'], ['filter_operator(1)', 'filter_operator(2)'], [[0, 1]]),
+    (['filter_operator(1)', 'filter_operator(1)'], ['filter_operator(1)'], [[0, 0]]),
+    (['filter_operator(1)'], ['filter_operator(1)', 'filter_operator(1)'], [[0, 0]]),
+    (['filter_operator(1)', 'random_selection_operator(1)'],
+     ['random_selection_operator(1)', 'filter_operator(1)'], [[0, 1]]),
+    (['filter_operator(x + 1)'], ['filter_operator( x+1 )'], [[0, 0]]),
+    (['filter_operator(x + 2)', 'filter_operator(x + 1)'], ['filter_operator( x+1 )'], [[1, 0]]),
+])
+def test_ordered_alignment(old, new, pairs):
+    scope = parse_scope()
+    import ast
+    result = scope['_spx_align'](
+        [ast.parse('w.' + text, mode='eval').body for text in old],
+        [ast.parse('w.' + text, mode='eval').body for text in new])
+    assert result == dict(pairs=pairs,
+                         deleted=[i for i in range(len(old)) if i not in [p[0] for p in pairs]],
+                         inserted=[i for i in range(len(new)) if i not in [p[1] for p in pairs]])
+
+
+def workflow_source(operators):
+    return ('w = (SpaceTimeWorkflowBuilder().input(loader).' + '.'.join(operators)
+            + '.output(writer))\nw.execute_live_workflow()')
+
+
+@pytest.mark.parametrize('kind', [
+    'insert_first', 'insert_middle', 'insert_last', 'delete_first', 'delete_middle', 'delete_last',
+    'insert_repeated', 'delete_repeated', 'argument', 'child_insert_delete', 'distinct_middle',
+])
+def test_structural_edit_execution_and_provenance(live, kind):
+    space, ns, source, root, session, counts, monkeypatch = live
+    executed = []
+    for cls in (FilterOperator, RandomSelectionOperator):
+        original = cls.execute
+        def record(self, original=original, label=cls.__name__):
+            executed.append(label)
+            return original(self)
+        monkeypatch.setattr(cls, 'execute', record)
+    scope = parse_scope()
+    old = scope['_spx_parse'](source)[2]
+    extra = 'random_selection_operator(2, seed=0)'
+    if kind == 'distinct_middle':
+        # Create A/B/D with filters, insert a distinct sampling stage C, then delete C.
+        reference = old[:2] + [old[1]]
+        variants = [reference, reference[:2] + [extra] + reference[2:], reference]
+    elif kind == 'child_insert_delete':
+        variants = [old[:2] + [extra] + old[2:], old[:2] + [extra],
+                    old[:2] + [extra, 'random_selection_operator(1, seed=0)'],
+                    [old[0], 'random_selection_operator(1, seed=0)']]
+    else:
+        new = old.copy()
+        if kind.startswith('insert_'):
+            position = {'insert_first': 0, 'insert_middle': 2, 'insert_last': 3, 'insert_repeated': 1}[kind]
+            new.insert(position, old[0] if kind == 'insert_repeated' else extra)
+        elif kind.startswith('delete_'):
+            del new[{'delete_first': 0, 'delete_middle': 1, 'delete_last': 2, 'delete_repeated': 0}[kind]]
+        else:
+            new[1] = new[1].replace('Python', 'Java')
+        variants = [new]
+    parent_id = root
+    for new in variants:
+        parent = space.data.get_branch(int(parent_id))
+        parent_attributes = json.loads(json.dumps(parent.attributes))
+        old = scope['_spx_parse'](parent.attributes['spx_source'])[2]
+        start = next((i for i, pair in enumerate(zip(old, new)) if pair[0] != pair[1]), min(len(old), len(new)))
+        text = workflow_source(new)
+        before = counts.copy()
+        executed.clear()
+        result = kernel('live-workflow.py', dict(action='edit', branchId=parent_id, source=text), ns, monkeypatch)
+        assert result['ok'], result
+        expected_types = {'filter_operator': 'FilterOperator', 'random_selection_operator': 'RandomSelectionOperator'}
+        assert executed == [expected_types[call.split('(')[0]] for call in new[start:]]
+        assert counts['load'] == before['load']
+        assert counts['write'] == before['write'] + 1
+        child = space.data.get_branch(int(result['branchId']))
+        attrs = child.attributes
+        assert attrs['spx_stage_step_ids'][:start] == parent_attributes['spx_stage_step_ids'][:start]
+        assert len(child.steps) == len(new) - start + 1
+        assert len(attrs['spx_stage_step_ids']) == len(new)
+        assert child.steps[-1].id == attrs['spx_terminal_step_id']
+        terminal = space.replay.prepare(parent_branch_id=child.id, forked_from_step_id=attrs['spx_terminal_step_id'])
+        assert terminal.locals['workflow']._output.size() == attrs['spx_workflow_stages'][-1]['sampleSize']
+        assert child.forked_from_step_id == (parent_attributes['spx_stage_step_ids'][start]
+            if start < len(old) else parent_attributes['spx_terminal_step_id'])
+        assert attrs['spx_alignment'] == scope['_spx_align'](
+            scope['_spx_parse'](parent_attributes['spx_source'])[1], scope['_spx_parse'](text)[1])
+        assert space.data.get_branch(int(parent_id)).attributes == parent_attributes
+        resumed_output = ns['writer'].set_path.read_text()
+        # A fresh execution must produce the same output and every stage summary.
+        exec(text.replace('execute_live_workflow()', 'execute_workflow()'), ns)
+        assert ns['writer'].set_path.read_text() == resumed_output
+        summary_scope = {}
+        exec((KERNEL / 'workflow-summary.py').read_text(), summary_scope)
+        assert attrs['spx_workflow_stages'] == summary_scope['_spx_summarize_workflow'](ns['w'])
+        before = counts.copy()
+        history = kernel('trace-query.py', dict(sessionId=session), ns, monkeypatch)
+        assert 'error' not in history, history
+        assert counts == before
+        shown = next(branch for branch in history['branches'] if branch['id'] == result['branchId'])
+        assert shown['source'] == text
+        assert shown['stageStepIds'] == attrs['spx_stage_step_ids']
+        assert shown['alignment'] == attrs['spx_alignment']
+        assert [stage['index'] for stage in shown['stages']] == list(range(1, len(new) + 1))
+        parent_id = result['branchId']
+
+
+def test_formatting_and_only_operator_deletion(live):
+    space, ns, source, root, session, counts, monkeypatch = live
+    before = counts.copy()
+    formatted = source.replace('seed=0', 'seed = 0')
+    result = kernel('live-workflow.py', dict(action='edit', branchId=root, source=formatted), ns, monkeypatch)
+    assert result['ok'] and result['reused']
+    assert counts == before
+    only = workflow_source(['random_selection_operator(1, seed=0)'])
+    result = kernel('live-workflow.py', dict(action='edit', branchId=root, source=only), ns, monkeypatch)
+    assert result['ok'], result
+    before = counts.copy()
+    result = kernel('live-workflow.py', dict(action='edit', branchId=result['branchId'],
+                    source=only.replace('.random_selection_operator(1, seed=0)', '')), ns, monkeypatch)
+    assert not result['ok']
+    assert counts == before

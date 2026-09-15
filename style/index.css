@@ -256,3 +256,11 @@
   color: var(--jp-ui-font-color3);
   font-size: var(--jp-ui-font-size0);
 }
+
+.spx-comparison { margin: 16px; overflow-x: auto; }
+.spx-comparison table { border-collapse: collapse; width: 100%; }
+.spx-comparison th, .spx-comparison td {
+  padding: 8px;
+  border: 1px solid var(--jp-border-color2);
+  text-align: left;
+}

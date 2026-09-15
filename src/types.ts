@@ -40,7 +40,20 @@ export interface SpaceTimeTracePayload {
   error?: string;
   session?: { id: number | string; name?: string | null };
   rootBranchId: string;
-  branches: Array<{ id: string; source: string }>;
+  branches: Array<{
+    id: string;
+    source: string;
+    parentId: string | null;
+    operators: string[];
+    stages: WorkflowStageSummary[];
+    stageStepIds: Array<number | string>;
+    output: WorkflowStageSummary;
+    alignment: {
+      pairs: Array<[number, number]>;
+      deleted: number[];
+      inserted: number[];
+    } | null;
+  }>;
   features: string[];
   inputStage?: WorkflowStageSummary | null;
   nodes: SpaceTimeTraceNode[];

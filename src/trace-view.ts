@@ -1,11 +1,10 @@
 import { Widget } from '@lumino/widgets';
 import {
   hierarchy,
-  tree as createTreeLayout,
-  type HierarchyPointNode
+  type HierarchyNode
 } from 'd3-hierarchy';
 
-import { buildWorkflowTree } from './trace-tree';
+import { buildWorkflowTree, workflowRows } from './trace-tree';
 import type {
   SpaceTimeTraceNode,
   SpaceTimeTracePayload,
@@ -105,14 +104,60 @@ export class SpaceTimeWebView extends Widget {
       return;
     }
 
+    this.renderComparison(trace, selection);
     const graph = document.createElement('div');
     graph.className = 'spx-trace-graph';
     this.content.append(graph);
     this.renderTraceTree(
       graph,
       buildWorkflowTree(trace),
-      selection
+      selection,
+      trace
     );
+  }
+
+  private renderComparison(trace: SpaceTimeTracePayload, selection: string): void {
+    const variant = trace.branches.find(branch => branch.id === selection);
+    const reference = trace.branches.find(branch => branch.id === variant?.parentId);
+    if (!variant?.alignment || !reference) {
+      return;
+    }
+    const section = document.createElement('section');
+    section.className = 'spx-comparison';
+    const heading = document.createElement('h3');
+    heading.textContent = `Stage comparison: branch ${reference.id} → ${variant.id}`;
+    const note = document.createElement('p');
+    note.textContent = 'Stages match by operator name and execution order. These links do not establish semantic equivalence.';
+    const table = document.createElement('table');
+    const header = table.createTHead().insertRow();
+    for (const text of ['Reference stage', 'Variant stage', 'Relation']) {
+      const cell = document.createElement('th');
+      cell.textContent = text;
+      header.append(cell);
+    }
+    const body = table.createTBody();
+    const add = (oldIndex: number | null, newIndex: number | null): void => {
+      const row = body.insertRow();
+      const values = [
+        oldIndex === null ? '—' : `${oldIndex + 1}. ${reference.operators[oldIndex]} (${reference.stages[oldIndex].sampleSize} elements)`,
+        newIndex === null ? '—' : `${newIndex + 1}. ${variant.operators[newIndex]} (${variant.stages[newIndex].sampleSize} elements)`,
+        oldIndex === null ? 'Inserted' : newIndex === null ? 'Deleted' : 'Matched'
+      ];
+      for (const text of values) {
+        row.insertCell().textContent = text;
+      }
+    };
+    let oldIndex = 0;
+    let newIndex = 0;
+    for (const [oldMatch, newMatch] of variant.alignment.pairs) {
+      while (oldIndex < oldMatch) { add(oldIndex++, null); }
+      while (newIndex < newMatch) { add(null, newIndex++); }
+      add(oldIndex++, newIndex++);
+    }
+    while (oldIndex < reference.operators.length) { add(oldIndex++, null); }
+    while (newIndex < variant.operators.length) { add(null, newIndex++); }
+    section.append(heading, note, table);
+    this.content.append(section);
   }
 
   renderStatus(message: string, isError = false): void {
@@ -132,17 +177,29 @@ export class SpaceTimeWebView extends Widget {
   private renderTraceTree(
     graph: HTMLElement,
     treeData: WorkflowTreeDatum,
-    activeBranchId: string
+    activeBranchId: string,
+    trace: SpaceTimeTracePayload
   ): void {
     const nodeWidth = 220;
     const horizontalStep = 276;
     const verticalGap = 64;
     const padding = 16;
-    const root = createTreeLayout<WorkflowTreeDatum>()
-      .nodeSize([horizontalStep, 1])(
-      hierarchy(treeData, datum => datum.children)
-    );
+    const root = hierarchy(treeData, datum => datum.children);
     const nodes = root.descendants();
+    const rows = workflowRows(trace, treeData);
+    // Separate leaf lanes also separate unrelated nodes after row alignment.
+    const horizontalPositions = new Map<WorkflowTreeDatum, number>();
+    let leafIndex = 0;
+    root.eachAfter(node => {
+      if (!node.children?.length) {
+        horizontalPositions.set(node.data, leafIndex++ * horizontalStep);
+      } else {
+        horizontalPositions.set(node.data, (
+          horizontalPositions.get(node.children[0].data)! +
+          horizontalPositions.get(node.children[node.children.length - 1].data)!
+        ) / 2);
+      }
+    });
     const activeLeaf = nodes.find(
       positionedNode =>
         positionedNode.data.branchId === activeBranchId
@@ -198,21 +255,21 @@ export class SpaceTimeWebView extends Widget {
       itemByDatum.set(datum, item);
     }
 
-    const depthHeights: number[] = [];
+    const rowHeights: number[] = [];
     for (const positionedNode of nodes) {
       const item = itemByDatum.get(positionedNode.data)!;
-      depthHeights[positionedNode.depth] = Math.max(
-        depthHeights[positionedNode.depth] ?? 0,
+      rowHeights[rows.get(positionedNode.data)!] = Math.max(
+        rowHeights[rows.get(positionedNode.data)!] ?? 0,
         item.offsetHeight
       );
     }
-    const depthTops = [padding];
-    for (let depth = 1; depth < depthHeights.length; depth++) {
-      depthTops[depth] =
-        depthTops[depth - 1] + depthHeights[depth - 1] + verticalGap;
+    const rowTops = [padding];
+    for (let depth = 1; depth < rowHeights.length; depth++) {
+      rowTops[depth] =
+        rowTops[depth - 1] + rowHeights[depth - 1] + verticalGap;
     }
 
-    const minimumX = Math.min(...nodes.map(node => node.x));
+    const minimumX = Math.min(...horizontalPositions.values());
     const positions = new Map<
       WorkflowTreeDatum,
       { left: number; top: number }
@@ -220,8 +277,8 @@ export class SpaceTimeWebView extends Widget {
     let canvasWidth = nodeWidth + padding * 2;
     let canvasHeight = 0;
     for (const positionedNode of nodes) {
-      const left = positionedNode.x - minimumX + padding;
-      const top = depthTops[positionedNode.depth];
+      const left = horizontalPositions.get(positionedNode.data)! - minimumX + padding;
+      const top = rowTops[rows.get(positionedNode.data)!];
       const item = itemByDatum.get(positionedNode.data)!;
       item.style.left = `${left}px`;
       item.style.top = `${top}px`;
@@ -272,8 +329,8 @@ export class SpaceTimeWebView extends Widget {
 
   private appendTreeLink(
     svg: SVGSVGElement,
-    source: HierarchyPointNode<WorkflowTreeDatum>,
-    target: HierarchyPointNode<WorkflowTreeDatum>,
+    source: HierarchyNode<WorkflowTreeDatum>,
+    target: HierarchyNode<WorkflowTreeDatum>,
     positions: Map<WorkflowTreeDatum, { left: number; top: number }>,
     items: Map<WorkflowTreeDatum, HTMLDivElement>,
     isActive: boolean

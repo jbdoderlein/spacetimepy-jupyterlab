@@ -22,24 +22,31 @@ try:
             raise ValueError("The cell has no completed live recording.")
         workflow = namespace[name]
         stages = _spx_summarize_workflow(workflow)
-        if len(parent.steps) != len(calls):
+        if len(parent.steps) != len(calls) + 1:
             raise ValueError("The source does not match the recorded operator count.")
         space.capture.annotate_branch(parent.id, {
             "spx_source": source, "spx_operators": descriptions,
             "spx_workflow_stages": stages, "spx_stage_start_index": 0,
+            "spx_stage_step_ids": [step.id for step in parent.steps[:-1]],
+            "spx_terminal_step_id": parent.steps[-1].id,
         })
         result = {"ok": True, "branchId": str(parent.id)}
     else:
         _, old_calls, old_descriptions, old_skeleton = _spx_parse(parent.attributes["spx_source"])
         if skeleton != old_skeleton:
-            raise ValueError("Keep the input, output, operator count, and operator order fixed.")
-        changed = [i for i, (old, new) in enumerate(zip(old_descriptions, descriptions)) if old != new]
-        if not changed:
+            raise ValueError("Keep the workflow variable, builder, input, and output fixed.")
+        start = 0
+        while (start < min(len(old_descriptions), len(descriptions))
+               and old_descriptions[start] == descriptions[start]):
+            start += 1
+        if start == len(old_calls) == len(calls):
+            # Keep the saved formatting without creating an execution branch.
+            space.capture.annotate_branch(parent.id, {"spx_source": source})
             result = {"ok": True, "branchId": str(parent.id), "reused": True}
         else:
-            start = changed[0]
-            path = space.data.get_branch(parent.id, resolve=True).steps
-            checkpoint = path[start]
+            stage_ids = parent.attributes["spx_stage_step_ids"]
+            checkpoint_id = (stage_ids[start] if start < len(old_calls)
+                             else parent.attributes["spx_terminal_step_id"])
 
             def execute(context):
                 workflow = context.locals["workflow"]
@@ -61,12 +68,15 @@ try:
 
             replay = space.replay.run(
                 execute, parent_branch_id=parent.id,
-                forked_from_step_id=checkpoint.id, name=f"Edit operator {start + 1}",
+                forked_from_step_id=checkpoint_id, name=f"Edit operator {start + 1}",
                 attributes={"spx_source": source, "spx_operators": descriptions,
-                            "spx_stage_start_index": start},
+                            "spx_stage_start_index": start,
+                            "spx_alignment": _spx_align(old_calls, calls)},
             )
             space.capture.annotate_branch(replay.branch.id, {
                 "spx_workflow_stages": _spx_summarize_workflow(replay.value),
+                "spx_stage_step_ids": stage_ids[:start] + [step.id for step in replay.branch.steps[:-1]],
+                "spx_terminal_step_id": replay.branch.steps[-1].id,
             })
             result = {"ok": True, "branchId": str(replay.branch.id)}
     space.commit()
